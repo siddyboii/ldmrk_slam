@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<package format="3">
+
+  <name>ldmrk_slam</name>
+  <version>0.0.1</version>
+
+  <description>
+    Incremental AprilTag based SLAM using GTSAM iSAM2.
+  </description>
+
+  <maintainer email="your_email@example.com">
+    Your Name
+  </maintainer>
+
+  <license>MIT</license>
+
+  <!-- Build Tool -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- ROS2 -->
+  <depend>rclcpp</depend>
+  <depend>nav_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>visualization_msgs</depend>
+  <depend>apriltag_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+
+</package>
