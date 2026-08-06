@@ -11,7 +11,7 @@ LandmarkSlamNode::LandmarkSlamNode() : Node("landmark_slam_node"), first_odom_re
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
     
     // NOTE: Change this if your camera link has a different name in your URDF!
-    camera_frame_id_ = "camera_link"; 
+    camera_frame_id_ = "base_footprint"; 
 
     // 2. Setup Subscribers
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
