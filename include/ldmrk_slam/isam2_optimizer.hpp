@@ -51,6 +51,11 @@ public:
      */
     gtsam::Values getOptimizedState() const;
 
+    /**
+     * @brief Returns the index of the most recently added pose (X).
+     */
+    int getCurrentPoseIndex() const { return current_pose_index_; }
+
 private:
     // --- The Core Engine ---
     gtsam::ISAM2 isam_;

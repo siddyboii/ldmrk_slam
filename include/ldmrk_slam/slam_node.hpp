@@ -9,6 +9,7 @@
 // TF2 Includes for 3D Pose Lookup
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
+#include <tf2_ros/transform_broadcaster.h> // ADDED FOR MAP->ODOM
 
 // Our custom GTSAM engine
 #include "ldmrk_slam/isam2_optimizer.hpp"
@@ -31,6 +32,7 @@ private:
     // --- TF2 Interfaces ---
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_; // ADDED
     std::string camera_frame_id_;
 
     // --- ROS 2 Interfaces ---

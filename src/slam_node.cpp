@@ -9,6 +9,7 @@ LandmarkSlamNode::LandmarkSlamNode() : Node("landmark_slam_node"), first_odom_re
     // 1.5 Initialize TF2 Listener
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+    tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this); // ADDED
     
     // NOTE: Change this if your camera link has a different name in your URDF!
     camera_frame_id_ = "base_footprint"; 
@@ -107,10 +108,47 @@ void LandmarkSlamNode::optimizationTimerCallback() {
     // 2. Retrieve the results
     gtsam::Values optimized_state = optimizer_->getOptimizedState();
 
+    // --- START MAP->ODOM TF PUBLISHING ---
+    // Only publish if we actually have poses in the graph
+    if (optimized_state.size() > 0 && first_odom_received_) {
+        try {
+            // A. Get the latest optimized "True" pose (Map Frame)
+            int latest_idx = optimizer_->getCurrentPoseIndex();
+            gtsam::Pose3 true_map_pose = optimized_state.at<gtsam::Pose3>(gtsam::Symbol('x', latest_idx));
+
+            // B. Get the latest raw "Drifted" odometry pose (Odom Frame)
+            gtsam::Pose3 drifted_odom_pose = last_odom_pose_;
+
+            // C. Calculate the correction: map_to_odom = map_to_base * (odom_to_base)^-1
+            gtsam::Pose3 map_to_odom = true_map_pose * drifted_odom_pose.inverse();
+
+            // D. Publish the TF
+            geometry_msgs::msg::TransformStamped tf_msg;
+            tf_msg.header.stamp = this->now();
+            tf_msg.header.frame_id = "map";
+            tf_msg.child_frame_id = "odom";
+
+            tf_msg.transform.translation.x = map_to_odom.translation().x();
+            tf_msg.transform.translation.y = map_to_odom.translation().y();
+            tf_msg.transform.translation.z = map_to_odom.translation().z();
+            
+            auto quat = map_to_odom.rotation().toQuaternion();
+            tf_msg.transform.rotation.w = quat.w();
+            tf_msg.transform.rotation.x = quat.x();
+            tf_msg.transform.rotation.y = quat.y();
+            tf_msg.transform.rotation.z = quat.z();
+
+            tf_broadcaster_->sendTransform(tf_msg);
+        } catch (const gtsam::ValuesKeyDoesNotExist& e) {
+            // Safe fallback if the requested key isn't in the state yet
+        }
+    }
+    // --- END MAP->ODOM TF PUBLISHING ---
+
     // 3. Prepare ROS Messages for RViz
     nav_msgs::msg::Path path_msg;
     path_msg.header.stamp = this->now();
-    path_msg.header.frame_id = "odom"; // Anchor it to the global frame
+    path_msg.header.frame_id = "map"; // Anchor it to the global frame
 
     visualization_msgs::msg::MarkerArray markers_msg;
 
@@ -133,7 +171,7 @@ void LandmarkSlamNode::optimizationTimerCallback() {
             gtsam::Pose3 tag_pose = key_value.value.cast<gtsam::Pose3>();
             
             visualization_msgs::msg::Marker marker;
-            marker.header.frame_id = "odom";
+            marker.header.frame_id = "map";
             marker.header.stamp = this->now();
             marker.ns = "apriltags";
             marker.id = symbol.index();
@@ -141,7 +179,7 @@ void LandmarkSlamNode::optimizationTimerCallback() {
             marker.action = visualization_msgs::msg::Marker::ADD;
             marker.pose = gtsamPoseToRos(tag_pose);
             marker.scale.x = 0.2; marker.scale.y = 0.2; marker.scale.z = 0.05; // 20cm tag
-            marker.color.a = 1.0; marker.color.r = 0.0; marker.color.g = 1.0; marker.color.b = 0.0; // Green
+            marker.color.a = 1.0; marker.color.r = 0.0; marker.color.g = 0.0; marker.color.b = 1.0; // Blue
             
             markers_msg.markers.push_back(marker);
         }
