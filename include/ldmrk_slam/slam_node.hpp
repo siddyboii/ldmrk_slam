@@ -41,6 +41,7 @@ private:
     
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr optimized_path_pub_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr landmarks_pub_;
+    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr optimized_odom_pub_; // ADDED
     
     rclcpp::TimerBase::SharedPtr optimization_timer_;
 

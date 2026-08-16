@@ -24,6 +24,7 @@ LandmarkSlamNode::LandmarkSlamNode() : Node("landmark_slam_node"), first_odom_re
     // 3. Setup Publishers for RViz
     optimized_path_pub_ = this->create_publisher<nav_msgs::msg::Path>("/optimized_path", 10);
     landmarks_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/optimized_landmarks", 10);
+    optimized_odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("/landmark_odom", 10); // ADDED
 
     // 4. Setup Optimization Loop (Run at 10 Hz)
     // We don't want to trigger an ISAM2 update on every single odometry message (too fast).
@@ -49,9 +50,32 @@ void LandmarkSlamNode::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg
     gtsam::Pose3 relative_odom_step = last_odom_pose_.between(current_odom_pose);
 
     // Only add to the graph if the robot actually moved
-    if (relative_odom_step.translation().norm() > 0.01 || 
-        relative_odom_step.rotation().xyz().norm() > 0.01) {
+    // if (relative_odom_step.translation().norm() > 0.01 || 
+    //     relative_odom_step.rotation().xyz().norm() > 0.01) {
         
+    //     optimizer_->addOdometry(relative_odom_step);
+    //     last_odom_pose_ = current_odom_pose;
+    // }
+    // --- KEYFRAMING LOGIC ---
+    // Extract translation distance and rotation magnitude
+    double dist = relative_odom_step.translation().norm();
+    
+    // Approximate angle change (using axis-angle representation norm)
+    double angle = relative_odom_step.rotation().xyz().norm();
+
+    // Thresholds: Only add a node if the robot moved 10cm or rotated ~5.7 degrees (0.1 rad)
+    double translation_threshold = 0.1;
+    double rotation_threshold = 0.1;
+
+    // Reject massive physical impossibilities (e.g. TF glitches causing 2 meter jumps in 0.1s)
+    if (dist > 1.0) {
+        RCLCPP_WARN(this->get_logger(), "Massive odometry jump (%.2fm) rejected!", dist);
+        last_odom_pose_ = current_odom_pose; // Reset anchor to avoid being permanently stuck
+        return;
+    }
+
+    // Only add to graph if we passed the keyframe thresholds
+    if (dist > translation_threshold || angle > rotation_threshold) {
         optimizer_->addOdometry(relative_odom_step);
         last_odom_pose_ = current_odom_pose;
     }
@@ -148,7 +172,7 @@ void LandmarkSlamNode::optimizationTimerCallback() {
     // 3. Prepare ROS Messages for RViz
     nav_msgs::msg::Path path_msg;
     path_msg.header.stamp = this->now();
-    path_msg.header.frame_id = "map"; // Anchor it to the global frame
+    path_msg.header.frame_id = "odom"; // Anchor it to the global frame
 
     visualization_msgs::msg::MarkerArray markers_msg;
 
@@ -171,7 +195,7 @@ void LandmarkSlamNode::optimizationTimerCallback() {
             gtsam::Pose3 tag_pose = key_value.value.cast<gtsam::Pose3>();
             
             visualization_msgs::msg::Marker marker;
-            marker.header.frame_id = "map";
+            marker.header.frame_id = "odom";
             marker.header.stamp = this->now();
             marker.ns = "apriltags";
             marker.id = symbol.index();
@@ -188,6 +212,21 @@ void LandmarkSlamNode::optimizationTimerCallback() {
     // 5. Publish!
     if (!path_msg.poses.empty()) {
         optimized_path_pub_->publish(path_msg);
+
+        // --- PUBLISH OPTIMIZED ODOMETRY ---
+        // We use the most recent optimized pose (the last one in the path)
+        nav_msgs::msg::Odometry optimized_odom_msg;
+        optimized_odom_msg.header.stamp = this->now();
+        optimized_odom_msg.header.frame_id = "odom";
+        optimized_odom_msg.child_frame_id = "base_footprint";
+        
+        // The pose is identical to the last element of our path
+        optimized_odom_msg.pose.pose = path_msg.poses.back().pose;
+        
+        // Note: For a complete implementation, we would extract the marginal covariance 
+        // from GTSAM and populate optimized_odom_msg.pose.covariance here.
+
+        optimized_odom_pub_->publish(optimized_odom_msg);
     }
     if (!markers_msg.markers.empty()) {
         landmarks_pub_->publish(markers_msg);
